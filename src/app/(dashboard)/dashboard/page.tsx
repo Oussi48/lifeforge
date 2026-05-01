@@ -12,8 +12,8 @@ import { useI18n } from '@/lib/i18n-provider'
 import Link from 'next/link'
 
 export default function DashboardPage() {
-  const { habits, getTodayHabits, getTotalStreak } = useHabitsStore()
-  const { logs, getTotals } = useNutritionStore()
+  const { habits, fetchHabits, getTodayHabits, getTotalStreak, isLoading: habitsLoading } = useHabitsStore()
+  const { logs, fetchTodayLogs, getTotals, isLoading: nutritionLoading } = useNutritionStore()
   const { user } = useAuthStore()
   const { t } = useI18n()
   const [mounted, setMounted] = useState(false)
@@ -21,6 +21,21 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (user && mounted && habits.length === 0) {
+      fetchHabits()
+      fetchTodayLogs()
+    }
+  }, [user, mounted, habits.length])
+
+  if (!mounted || habitsLoading || nutritionLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
 
   const todayHabits = getTodayHabits()
   const completedHabits = todayHabits.filter(h => h.isCompleted).length
