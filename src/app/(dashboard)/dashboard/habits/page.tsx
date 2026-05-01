@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Flame, Plus, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,22 +15,24 @@ import {
 } from '@/components/ui/dialog'
 import { useHabitsStore } from '@/stores/habits-store'
 import { useI18n } from '@/lib/i18n-provider'
+import { useAuthStore } from '@/stores/auth-store'
 import { cn, getTodayISO } from '@/lib/utils'
 
-const defaultHabits = [
-  { name: 'No Smoking', slug: 'no-smoking', icon: '🚭', color: '#ef4444' },
-  { name: 'Gym', slug: 'gym', icon: '🏋️', color: '#10b981' },
-  { name: 'Prayer', slug: 'prayer', icon: '🙏', color: '#3b82f6' },
-]
-
 export default function HabitsPage() {
-  const { habits, toggleHabit, addHabit, deleteHabit, isLoading } = useHabitsStore()
+  const { habits, fetchHabits, toggleHabit, addHabit, deleteHabit, isLoading } = useHabitsStore()
+  const { user } = useAuthStore()
   const { t } = useI18n()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newHabitName, setNewHabitName] = useState('')
   const [newHabitIcon, setNewHabitIcon] = useState('✨')
   const [newHabitColor, setNewHabitColor] = useState('#10b981')
   const today = getTodayISO()
+
+  useEffect(() => {
+    if (user && habits.length === 0) {
+      fetchHabits()
+    }
+  }, [user])
 
   const handleToggle = async (habitId: string) => {
     await toggleHabit(habitId, today)

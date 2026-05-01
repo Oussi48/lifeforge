@@ -26,31 +26,43 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
+      console.log('No user found')
       set({ isLoading: false, error: 'Not authenticated' })
       return
     }
+
+    console.log('Fetching habits for user:', user.id)
 
     // First fetch habits
     const { data: habitsData, error: habitsError } = await supabase
       .from('habits')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
+
+    console.log('Habits data:', habitsData, 'Error:', habitsError)
 
     if (habitsError) {
+      console.log('Habits error:', habitsError)
       set({ isLoading: false, error: habitsError.message })
+      return
+    }
+
+    if (!habitsData || habitsData.length === 0) {
+      console.log('No habits found for user')
+      set({ habits: [], isLoading: false })
       return
     }
 
     // Then fetch entries for each habit
     const habitsWithEntries = await Promise.all(
-      (habitsData || []).map(async (habit) => {
+      habitsData.map(async (habit) => {
+        console.log('Fetching entries for habit:', habit.id)
         const { data: entries } = await supabase
           .from('habit_entries')
           .select('*')
           .eq('habit_id', habit.id)
-          .order('date', { ascending: false })
         
+        console.log('Entries for habit', habit.id, ':', entries)
         return { ...habit, entries: entries || [] }
       })
     )
@@ -58,8 +70,9 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     const habitsWithStreaks = habitsWithEntries.map((habit) => ({
       ...habit,
       streak: getStreak(habit.entries || [])
-    })) || []
+    }))
 
+    console.log('Final habits with streaks:', habitsWithStreaks)
     set({ habits: habitsWithStreaks, isLoading: false })
   },
 
@@ -67,11 +80,16 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     const supabase = createClient()
     const { habits } = get()
     const habit = habits.find(h => h.id === habitId)
-    if (!habit) return
+    if (!habit) {
+      console.log('Habit not found:', habitId)
+      return
+    }
 
     const entries = habit.entries || []
     const existingEntry = entries.find(e => e.date === date)
     const isCompleted = existingEntry?.completed || false
+
+    console.log('Toggling habit:', habitId, 'date:', date, 'isCompleted:', isCompleted)
 
     // Optimistic update
     set(state => ({
@@ -90,12 +108,14 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
 
     // Server update
     if (isCompleted) {
+      console.log('Deleting entry for:', habitId, date)
       await supabase
         .from('habit_entries')
         .delete()
         .match({ habit_id: habitId, date })
     } else {
-      await supabase
+      console.log('Inserting entry for:', habitId, date)
+      const { data, error } = await supabase
         .from('habit_entries')
         .upsert({
           habit_id: habitId,
@@ -104,6 +124,9 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
         }, {
           onConflict: 'habit_id,date'
         })
+        .select()
+      
+      console.log('Upsert result:', data, 'error:', error)
     }
   },
 
