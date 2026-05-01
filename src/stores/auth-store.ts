@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/lib/types'
+import { ADMIN_EMAIL } from '@/lib/diet-plan'
 
 interface AuthState {
   user: User | null
+  isPremium: boolean
   isLoading: boolean
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
@@ -11,11 +13,63 @@ interface AuthState {
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<User>) => Promise<void>
+  checkPremiumStatus: () => Promise<boolean>
+  grantPremiumAccess: (userId: string) => Promise<void>
+  revokePremiumAccess: (userId: string) => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  isPremium: false,
   isLoading: true,
+
+  checkPremiumStatus: async () => {
+    const { user } = get()
+    if (!user) return false
+    
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('premium_users')
+      .select('is_active')
+      .eq('user_id', user.id)
+      .single()
+    
+    const isPremium = data?.is_active === true
+    set({ isPremium })
+    return isPremium
+  },
+
+  grantPremiumAccess: async (userId: string) => {
+    const { user: adminUser } = get()
+    if (!adminUser || adminUser.email !== ADMIN_EMAIL) return
+    
+    const supabase = createClient()
+    const { data: targetUser } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', userId)
+      .single()
+    
+    if (targetUser) {
+      await supabase.from('premium_users').upsert({
+        user_id: userId,
+        email: targetUser.email,
+        granted_by: adminUser.id,
+        is_active: true
+      })
+    }
+  },
+
+  revokePremiumAccess: async (userId: string) => {
+    const { user: adminUser } = get()
+    if (!adminUser || adminUser.email !== ADMIN_EMAIL) return
+    
+    const supabase = createClient()
+    await supabase
+      .from('premium_users')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+  },
 
   initialize: async () => {
     const supabase = createClient()
@@ -40,7 +94,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           const defaultHabits = [
             { name: 'No Smoking', slug: 'no-smoking', icon: '🚭', color: '#ef4444' },
             { name: 'Gym', slug: 'gym', icon: '🏋️', color: '#10b981' },
-            { name: 'Prayer', slug: 'prayer', icon: '🙏', color: '#3b82f6' }
+            { name: 'rezar', slug: 'rezar', icon: '🙏', color: '#3b82f6' }
           ]
           for (const habit of defaultHabits) {
             await supabase.from('habits').insert({
@@ -65,6 +119,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           },
           isLoading: false
         })
+        
+        // Verificar estado premium después de cargar usuario
+        await get().checkPremiumStatus()
+        
+        // Si es admin, garantizar acceso premium
+        if (user.email === ADMIN_EMAIL) {
+          const isAdmin = await get().checkPremiumStatus()
+          if (!isAdmin) {
+            await get().grantPremiumAccess(user.id)
+            set({ isPremium: true })
+          }
+        }
       } else {
         // Crear perfil si no existe (para usuarios OAuth)
         await supabase.from('profiles').insert({
@@ -78,7 +144,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const defaultHabits = [
           { name: 'No Smoking', slug: 'no-smoking', icon: '🚭', color: '#ef4444' },
           { name: 'Gym', slug: 'gym', icon: '🏋️', color: '#10b981' },
-          { name: 'Prayer', slug: 'prayer', icon: '🙏', color: '#3b82f6' }
+          { name: 'rezar', slug: 'rezar', icon: '🙏', color: '#3b82f6' }
         ]
         for (const habit of defaultHabits) {
           await supabase.from('habits').insert({
@@ -101,6 +167,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           },
           isLoading: false
         })
+        
+        // Verificar estado premium
+        await get().checkPremiumStatus()
+        
+        // Si es admin, garantizar acceso premium
+        if (user.email === ADMIN_EMAIL) {
+          await get().grantPremiumAccess(user.id)
+          set({ isPremium: true })
+        }
       }
     } else {
       set({ user: null, isLoading: false })
@@ -153,7 +228,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const defaultHabits = [
           { name: 'No Smoking', slug: 'no-smoking', icon: '🚭', color: '#ef4444' },
           { name: 'Gym', slug: 'gym', icon: '🏋️', color: '#10b981' },
-          { name: 'Prayer', slug: 'prayer', icon: '🙏', color: '#3b82f6' }
+          { name: 'rezar', slug: 'rezar', icon: '🙏', color: '#3b82f6' }
         ]
 
         for (const habit of defaultHabits) {

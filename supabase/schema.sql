@@ -66,6 +66,17 @@ CREATE TABLE public.nutrition_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Premium users table
+CREATE TABLE public.premium_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  granted_at TIMESTAMPTZ DEFAULT NOW(),
+  granted_by UUID REFERENCES auth.users(id),
+  UNIQUE(user_id)
+);
+
 -- ============================================================
 -- ÍNDICES
 -- ============================================================
@@ -74,6 +85,8 @@ CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(date);
 CREATE INDEX idx_habits_user ON habits(user_id);
 CREATE INDEX idx_habit_entries_habit_date ON habit_entries(habit_id, date);
 CREATE INDEX idx_habit_entries_date ON habit_entries(date);
+CREATE INDEX idx_premium_users_user ON premium_users(user_id);
+CREATE INDEX idx_premium_users_email ON premium_users(email);
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -84,6 +97,7 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habit_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE premium_users ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles
@@ -142,6 +156,16 @@ CREATE POLICY "Users can update own nutrition logs" ON nutrition_logs
 CREATE POLICY "Users can delete own nutrition logs" ON nutrition_logs
   FOR DELETE USING (auth.uid() = user_id);
 
+-- Premium users policies
+-- Anyone can view if they are premium (to check own status)
+CREATE POLICY "Premium users can view own status" ON premium_users
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- Only service role can manage (use in edge functions)
+-- For now, allow users to view their own premium status
+CREATE POLICY "Users can view premium status" ON premium_users
+  FOR SELECT USING (auth.uid() = user_id);
+
 -- ============================================================
 -- FUNCTIONS
 -- ============================================================
@@ -154,7 +178,7 @@ BEGIN
   VALUES 
     (NEW.id, 'No Smoking', 'no-smoking', '🚭', '#ef4444', TRUE),
     (NEW.id, 'Gym', 'gym', '🏋️', '#10b981', TRUE),
-    (NEW.id, 'Prayer', 'prayer', '🙏', '#3b82f6', TRUE);
+    (NEW.id, 'rezar', 'rezar', '🙏', '#3b82f6', TRUE);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -200,5 +224,53 @@ BEGIN
     COUNT(*)::INT
   FROM nutrition_logs
   WHERE user_id = p_user_id AND date = p_date;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to check if user is premium
+CREATE OR REPLACE FUNCTION is_user_premium(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_is_premium BOOLEAN := FALSE;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM premium_users
+    WHERE user_id = p_user_id AND is_active = TRUE
+  ) INTO v_is_premium;
+  RETURN v_is_premium;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to grant premium access
+CREATE OR REPLACE FUNCTION grant_premium_access(p_granted_user_id UUID, p_granted_by UUID)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO premium_users (user_id, email, granted_by)
+  SELECT p_granted_user_id, email, p_granted_by
+  FROM auth.users
+  WHERE id = p_granted_user_id
+  ON CONFLICT (user_id) DO UPDATE SET 
+    is_active = TRUE,
+    granted_at = NOW(),
+    granted_by = p_granted_by;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to revoke premium access
+CREATE OR REPLACE FUNCTION revoke_premium_access(p_user_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE premium_users 
+  SET is_active = FALSE 
+  WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Admin check function (you as owner can manage)
+CREATE OR REPLACE FUNCTION is_admin(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- You are the admin (replace with your user ID from auth.users)
+  RETURN p_user_id = auth.users.id WHERE email = 'oussamablhbnz@gmail.com';
 END;
 $$ LANGUAGE plpgsql;

@@ -22,6 +22,7 @@ export const translations = {
       analytics: 'Analytics',
       settings: 'Settings',
       menu: 'Menu',
+      'diet-plan': 'Diet Plan',
     },
     auth: {
       welcomeBack: 'Welcome back',
@@ -141,6 +142,7 @@ export const translations = {
       analytics: 'Estadísticas',
       settings: 'Ajustes',
       menu: 'Menú',
+      'diet-plan': 'Plan de Dieta',
     },
     auth: {
       welcomeBack: 'Bienvenido de nuevo',

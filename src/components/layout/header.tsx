@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import { 
   LayoutDashboard, 
   Target, 
@@ -10,11 +11,14 @@ import {
   Settings,
   Flame,
   LogOut,
-  Menu
+  Menu,
+  Sparkles,
+  UtensilsCrossed
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHabitsStore } from '@/stores/habits-store'
+import { ADMIN_EMAIL } from '@/lib/diet-plan'
 import { Button } from '@/components/ui/button'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
@@ -28,17 +32,28 @@ const navItems = [
   { href: '/dashboard/settings', labelKey: 'settings' as const, icon: Settings },
 ]
 
+const premiumNavItems = [
+  { href: '/dashboard/diet-plan', labelKey: 'diet-plan' as const, icon: UtensilsCrossed },
+]
+
 function getNavLabel(t: any, key: string): string {
   return t?.nav?.[key] || key
 }
 
 export function Header() {
   const pathname = usePathname()
-  const { user, signOut } = useAuthStore()
+  const { user, signOut, isPremium, checkPremiumStatus } = useAuthStore()
   const { getTotalStreak } = useHabitsStore()
   const streak = getTotalStreak()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { t } = useI18n()
+
+  // Verificar premium en mount
+  useEffect(() => {
+    if (user) checkPremiumStatus()
+  }, [user, checkPremiumStatus])
+
+  const isPremiumUser = user?.email === ADMIN_EMAIL || isPremium
 
   return (
     <>
@@ -77,6 +92,26 @@ export function Header() {
                 >
                   <Icon className="h-4 w-4" />
                   {getNavLabel(t, item.labelKey)}
+                </Link>
+              )
+            })}
+            {isPremiumUser && premiumNavItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    'bg-gradient-to-r from-amber-500/10 to-orange-500/10',
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-amber-500 hover:text-amber-400 hover:bg-amber-500/20'
+                  )}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Diet Plan
                 </Link>
               )
             })}
@@ -123,6 +158,19 @@ export function Header() {
                         </Link>
                       )
                     })}
+                    {isPremiumUser && (
+                      <Link
+                        href="/dashboard/diet-plan"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={cn(
+                          'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors',
+                          'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-500'
+                        )}
+                      >
+                        <Sparkles className="h-5 w-5" />
+                        Diet Plan
+                      </Link>
+                    )}
                   </nav>
                   <div className="absolute bottom-4 left-4 right-4">
                     <div className="text-sm text-muted-foreground mb-2 truncate">{user?.email}</div>
@@ -156,7 +204,7 @@ export function Header() {
       {/* Mobile Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur md:hidden safe-area-pb">
         <div className="flex items-center justify-around h-16">
-          {navItems.slice(0, 4).map((item) => {
+          {[...navItems.slice(0, 3), ...(isPremiumUser ? [{ href: '/dashboard/diet-plan', labelKey: 'diet-plan' as const, icon: Sparkles }] : [])].map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
@@ -169,7 +217,7 @@ export function Header() {
                 )}
               >
                 <Icon className={cn('h-5 w-5', isActive && 'fill-primary/20')} />
-                <span className="text-xs">{getNavLabel(t, item.labelKey)}</span>
+                <span className="text-xs">{item.labelKey === 'diet-plan' ? 'Diet' : getNavLabel(t, item.labelKey)}</span>
               </Link>
             )
           })}
