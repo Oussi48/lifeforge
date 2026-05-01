@@ -30,23 +30,34 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
       return
     }
 
-    const { data, error } = await supabase
+    // First fetch habits
+    const { data: habitsData, error: habitsError } = await supabase
       .from('habits')
-      .select(`
-        *,
-        habit_entries (*)
-      `)
+      .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      set({ isLoading: false, error: error.message })
+    if (habitsError) {
+      set({ isLoading: false, error: habitsError.message })
       return
     }
 
-    const habitsWithStreaks = data?.map((habit) => ({
+    // Then fetch entries for each habit
+    const habitsWithEntries = await Promise.all(
+      (habitsData || []).map(async (habit) => {
+        const { data: entries } = await supabase
+          .from('habit_entries')
+          .select('*')
+          .eq('habit_id', habit.id)
+          .order('date', { ascending: false })
+        
+        return { ...habit, entries: entries || [] }
+      })
+    )
+
+    const habitsWithStreaks = habitsWithEntries.map((habit) => ({
       ...habit,
-      streak: getStreak(habit.habit_entries || [])
+      streak: getStreak(habit.entries || [])
     })) || []
 
     set({ habits: habitsWithStreaks, isLoading: false })
